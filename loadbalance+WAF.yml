@@ -1,0 +1,96 @@
+# Configuração do provedor de nuvem
+provider "aws" {
+  region = "us-east-1"
+}
+
+# Definição do grupo de segurança
+resource "aws_security_group" "WebServer" {
+  name_prefix = "WebServer-"
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Definição do grupo de auto scaling
+resource "aws_launch_configuration" "example" {
+  name_prefix = "example-"
+  image_id    = "ami-09d3b3274b6c5d4aa"
+  instance_type = "t2.micro"
+}
+
+resource "aws_autoscaling_group" "example" {
+  name_prefix = "example-"
+  launch_configuration = aws_launch_configuration.example.id
+  min_size     = 2
+  max_size     = 5
+  desired_capacity = 2
+  vpc_zone_identifier = ["subnet-0f5be23ebb8073f88", "subnet-0eecbf7c23382301e", "subnet-047d3e272715862af"]
+  target_group_arns = [arn:aws:elasticloadbalancing:us-east-1:291926095288:targetgroup/tg1/c16812dad8f02b63]
+}
+
+# Definição do load balancer
+resource "aws_lb" "example" {
+  name_prefix = "example-"
+  load_balancer_type = "application"
+  subnets = ["subnet-0f5be23ebb8073f88", "subnet-0eecbf7c23382301e", "subnet-047d3e272715862af"]
+}
+
+resource "aws_lb_target_group" "example" {
+  name_prefix = "example-"
+  port = 80
+  protocol = "HTTP"
+  vpc_id = "vpc-07b2ccf392fb4c551"
+}
+
+resource "aws_lb_listener" "example" {
+  load_balancer_arn = aws_lb.example.arn
+  port = 80
+  protocol = "HTTP"
+  default_action {
+    type = "forward"
+    target_group_arn = arn:aws:elasticloadbalancing:us-east-1:291926095288:targetgroup/tg1/c16812dad8f02b63
+  }
+}
+
+# Definição do WAF
+resource "aws_waf_web_acl" "example" {
+  name = "example-web-acl"
+  default_action {
+    type = "ALLOW"
+  }
+  rule {
+    priority = 1
+    action {
+      type = "BLOCK"
+    }
+    override_action {
+      type = "NONE"
+    }
+    statement {
+      rule_group_reference_statement {
+        name = "AWS-AWSManagedRulesSQLiRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+  }
+}
+
+resource "aws_waf_web_acl_association" "example" {
+  resource_arn = arn:aws:elasticloadbalancing:us-east-1:291926095288:loadbalancer/app/WebApp/994106ad12ed9efd
+  web_acl_id = 30282124-dc05-4f9c-b8c6-dd22fba83b01
+}
